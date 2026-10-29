@@ -15,3 +15,7 @@ Toolbar actions add series computed from candles or SVG overlays positioned thro
 ## Further work
 
 After allowed destinations are applied, validate actual Bitstamp OHLC delivery. Full parity would require a much larger, explicitly specified feature catalog, drawing editing/state architecture, indicator execution language, authenticated persistence, reliable stream/history infrastructure and market/exchange licensing. Do not infer parity from visual similarity.
+
+## Screenshot-driven update
+
+A later set of five screenshots supplied the clean chart, Lines/Channels/Pitchfork menu, indicator catalog, chart-type picker, and Fibonacci/Gann menu. These images were the source for the new UI. No new claim about access to TradingView internals or REA evidence is made. The default blue histogram panes were removed; Volume and OBV remain optional studies. New formulas are independent standard technical calculations. Auto tools and market-breadth indicators are explicitly unavailable. Price labels and buy/sell quotes now stay on the latest candle when hovering historical candles; only the OHLC heading follows the cursor.

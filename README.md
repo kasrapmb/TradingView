@@ -15,10 +15,12 @@ Production build: `npm run build`. Serve and validate it with `npm run preview`.
 
 ## Implemented
 
-- Candles, OHLC bars, line and area charts, volume overlay, pan/zoom, crosshair, log scale, fit and screenshot export.
+- Clean full-height candle chart by default, matching the newer screenshots. Optional indicators create lower panes only when selected.
+- Eleven chart types: Bars, Candles, Hollow candles, Line, Line with markers, Step line, Area, Baseline, Columns, High-low and Heikin Ashi. High-low omits open/close information; Heikin Ashi uses synthetic OHLC values.
 - BTC, ETH, SOL, XRP and LTC USD markets; 1m through 1W timeframes. Public Bitstamp OHLC refreshes every 30 seconds. Feed failure is visibly labeled; deterministic synthetic candles support offline development. No simulated values are labeled live.
-- SMA 20, EMA 20, Bollinger Bands (20, 2), RSI 14, VWAP (cumulative over the loaded window), Volume and OBV. Two blue histogram panes approximate the screenshot's layout; the screenshot does not identify its indicators, so these are chosen implementations, not recovered originals.
-- Trend line, horizontal price line, Fibonacci retracement, rectangle, text, marker and measurement. One/two-click placement, undo/redo, candle snapping, hide, lock, object tree and delete. Drawings are stored in logical candle coordinates, so changing intervals/markets resets them.
+- Nineteen computed indicators: 24-hour volume, Accumulation/distribution, ALMA, Aroon, Aroon oscillator, Average daily range, ATR, Bollinger Bands, CCI, EMA, MACD, OBV, ROC, RSI, SMA, Stochastic, Volume, VWAP and Williams %R. Searchable indicator browser with category navigation, added-state labels and explicit unavailable sections. ADR requires at least 14 daily groups; short histories may produce no values. VWAP is cumulative over loaded candles. Initial EMA/MACD values use first-close seeding; exact TradingView results are not guaranteed.
+- Floating drawing menus for Lines, Channels, Pitchforks, Fibonacci and Gann. Rays, extended lines, verticals, crosslines, info/angle lines, regression channels, parallel/disjoint channels, pitchforks, fib extensions/time zones/fans/arcs/circles/spiral and Gann grids/fans; plus rectangle, text, marker and measurement. Tools use one, two, three or four clicks. Alt+T/H/J/V/C/F selects common drawing tools. Escape closes menus and exits drawing mode.
+- Undo/redo, candle snapping, hide, lock, object tree and delete. Drawings are stored in logical candle coordinates, so changing intervals/markets resets them. Fibonacci, Gann, angle and channel geometries are independent screen-space implementations, not exact replicas of proprietary tools. Gann square tools are viewport-square constructions, not calibrated price/time ratios. Shapes do not yet have draggable editing handles.
 - Local layout save, notes, price-above alerts while page is open, historical candle replay, local paper orders. No money or real exchange orders involved.
 - Dark top/left/right/bottom toolbars and watchlist; narrower-screen layout.
 
@@ -37,6 +39,14 @@ npm run build
 npx playwright test
 ```
 
-Tests cover indicator invariants, OHLC integrity, chart rendering, indicators, drawing placement, chart type, timeframe, paper ordering and responsive layout. Browser tests mock unavailable live data; they do not prove connectivity to Bitstamp.
+Tests cover indicator invariants, OHLC integrity, Heikin Ashi recurrence, all menu drawing geometries, all 19 indicator executions, all 11 chart types, menu search/categories, multi-point placement, keyboard shortcuts, paper ordering and responsive layout. Browser tests mock unavailable live data; they do not prove connectivity to Bitstamp.
 
 See `RESEARCH.md` for observed research boundaries and architecture.
+
+## Updated reference screens
+
+The default chart, drawing menus and indicator browser follow the supplied reference images. Community catalogs, fundamentals, automated drawing indicators, order-flow chart types and Pine execution remain unavailable and are labeled accordingly.
+
+![Clean chart](docs/images/chart.png)
+![Drawing menu](docs/images/lines.png)
+![Indicator browser](docs/images/indicators.png)
