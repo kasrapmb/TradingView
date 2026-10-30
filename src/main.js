@@ -101,6 +101,8 @@ import { demo, sma, ema, rsi, bands } from "./data.js";
 import "./style.css";
 import {
   drawingGroups,
+  annotationGroups,
+  projectionGroups,
   fibGroups,
   onePoint,
   threePoint,
@@ -122,7 +124,8 @@ const tools = [
   ["minus", "Horizontal line", "horizontal"],
   ["sliders-horizontal", "Fibonacci and Gann", "fib-menu"],
   ["pentagon", "Rectangle", "rectangle"],
-  ["type", "Text annotation", "text"],
+  ["ruler", "Projection and measurement", "projection-menu"],
+  ["type", "Text and notes", "text-menu"],
   ["smile", "Emoji marker", "emoji"],
   ["ruler", "Measure", "measure"],
   ["zoom-in", "Zoom in", "zoom"],
@@ -167,6 +170,32 @@ let symbol = "btcusd",
   loadId = 0;
 const host = document.querySelector("#chart");
 const svg = document.querySelector("#drawings");
+const paneLabels = document.createElement("div");
+paneLabels.id = "pane-labels";
+document.querySelector(".chart-shell").append(paneLabels);
+const drawingToolbar = document.createElement("div");
+drawingToolbar.id = "drawing-toolbar";
+document.querySelector(".chart-shell").append(drawingToolbar);
+let selectedDrawing = -1,
+  previewPoint = null,
+  dragState = null,
+  suppressClick = false;
+let undoSnapshots = [],
+  redoSnapshots = [];
+function checkpoint() {
+  undoSnapshots.push(structuredClone(drawings));
+  if (undoSnapshots.length > 100) undoSnapshots.shift();
+  redoSnapshots = [];
+}
+const studyOptions = JSON.parse(
+  localStorage.getItem("cw-study-options") || "{}",
+);
+const hiddenStudies = new Set();
+const lastPriceMarker = document.createElement("div");
+lastPriceMarker.id = "last-price-marker";
+document.querySelector(".chart-shell").append(lastPriceMarker);
+let paneSizeSignature = "";
+
 const chart = createChart(host, {
   autoSize: true,
   layout: {
@@ -176,7 +205,7 @@ const chart = createChart(host, {
     attributionLogo: true,
   },
   grid: { vertLines: { color: "#242833" }, horzLines: { color: "#242833" } },
-  rightPriceScale: { borderColor: "#2a2e39" },
+  rightPriceScale: { borderColor: "#2a2e39", minimumWidth: 84 },
   timeScale: {
     borderColor: "#2a2e39",
     timeVisible: true,
@@ -229,6 +258,7 @@ function createSeries() {
     topColor: "#2962ff55",
     bottomColor: "#2962ff00",
     priceLineVisible: true,
+    lastValueVisible: false,
     pointMarkersVisible: mode === "markers",
     lineType: mode === "step" ? 1 : 0,
     openVisible: mode !== "high-low",
@@ -253,11 +283,13 @@ function setData() {
     ),
   );
   for (const [name, ss] of studies) {
-    const values = computeStudy(name, shown, step);
+    const values = computeStudy(name, shown, step, studyOptions[name]);
     ss.forEach((s, i) => s.setData(values[i] || []));
   }
   updateQuote(shown.at(-1));
   renderDrawings();
+  studyLabels();
+  queueOverlayLayout();
 }
 function updateQuote(d, hover = false) {
   if (!d) return;
@@ -388,7 +420,19 @@ function addStudy(name) {
         ? HistogramSeries
         : LineSeries,
       {
-        color: ["#638cff", "#ffb74d", "#26c6da"][i % 3],
+        color:
+          studyOptions[name]?.color ||
+          (["Volume", "24-hour volume"].includes(name)
+            ? "#2962ff"
+            : ["#638cff", "#ffb74d", "#26c6da"][i % 3]),
+        priceFormat: [
+          "Volume",
+          "24-hour volume",
+          "OBV",
+          "Accumulation/distribution",
+        ].includes(name)
+          ? { type: "volume" }
+          : { type: "price", precision: 2, minMove: 0.01 },
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: true,
@@ -403,9 +447,42 @@ function addStudy(name) {
   studyLabels();
 }
 function studyLabels() {
-  document.querySelector("#study-labels").innerHTML = [...studies.keys()]
-    .map((n) => `<button data-remove-study="${n}">${n} ×</button>`)
+  const label = (n) =>
+    `<div class="study-label ${hiddenStudies.has(n) ? "study-hidden" : ""}"><span>${n}${studyOptions[n]?.period ? " · " + studyOptions[n].period : ""}</span><button data-toggle-study="${n}" title="Show/hide indicator" aria-label="Toggle ${n}">${icon("eye")}</button><button data-study-settings="${n}" title="Indicator settings" aria-label="Settings ${n}">${icon("settings-2")}</button><button data-remove-study="${n}" title="Remove indicator" aria-label="Remove ${n}">×</button></div>`;
+  const overlays = [...studies.keys()].filter(
+    (n) => indicatorCatalog.find((x) => x[0] === n)[3] === "overlay",
+  );
+  document.querySelector("#study-labels").innerHTML = overlays
+    .map(label)
     .join("");
+  paneLabels.innerHTML = [...studies]
+    .filter(([n]) => !overlays.includes(n))
+    .map(([n, ss]) => {
+      const pane = ss[0].getPane();
+      const idx = pane.paneIndex();
+      const top = chart
+        .panes()
+        .slice(0, idx)
+        .reduce((sum, p) => sum + p.getHeight() + 1, 0);
+      return `<div class="pane-study" style="top:${top + 4}px">${label(n)}</div>`;
+    })
+    .join("");
+  createIcons({ icons });
+}
+function removeStudy(name) {
+  if (!studies.has(name)) return;
+  studies.get(name).forEach((s) => chart.removeSeries(s));
+  studies.delete(name);
+  hiddenStudies.delete(name);
+  studyLabels();
+  queueOverlayLayout();
+}
+function studySettings(name) {
+  const opts = studyOptions[name] || {};
+  modal(
+    name + " · Settings",
+    `<form id="study-settings-form" data-name="${name}">${["SMA 20", "EMA 20", "RSI 14", "Bollinger Bands"].includes(name) ? `<label>Length<input type="number" name="period" min="2" max="500" required value="${opts.period || (name === "RSI 14" ? 14 : 20)}"></label>` : ""}${name === "24-hour volume" ? `<label>Volume unit<select name="volumeUnit"><option value="quote" ${opts.volumeUnit !== "base" ? "selected" : ""}>Quote currency (USD)</option><option value="base" ${opts.volumeUnit === "base" ? "selected" : ""}>Base currency</option></select></label>` : ""}<label>Line / column color<input type="color" name="color" value="${opts.color || "#2962ff"}"></label><button class="primary">Apply</button></form>`,
+  );
 }
 function toast(t) {
   const el = document.querySelector("#toast");
@@ -429,6 +506,9 @@ function close() {
 function chooseSymbol(s) {
   symbol = s;
   drawings = [];
+  undoSnapshots = [];
+  redoSnapshots = [];
+  setTool("cursor");
   document.querySelector(".symbol").textContent = s.toUpperCase();
   document.querySelector("#detail-symbol").textContent = s.toUpperCase();
   document.querySelector("#instrument").textContent =
@@ -440,6 +520,7 @@ function chooseSymbol(s) {
 }
 function setTool(t) {
   close();
+  previewPoint = null;
   tool = t;
   first = null;
   second = null;
@@ -456,6 +537,9 @@ function setTool(t) {
             fibGroups.some((g) => g[1].some((x) => x[0] === t))),
       ),
     );
+  selectedDrawing = -1;
+  renderSelectionToolbar();
+  renderDrawings();
   host.style.cursor = t === "cursor" ? "default" : "crosshair";
   document.querySelector("#drawings").style.pointerEvents = [
     "cursor",
@@ -490,59 +574,221 @@ function coords(p) {
 }
 function renderDrawings() {
   if (!series) return;
+  const latest = (replaying ? data.slice(0, replayIndex) : data).at(-1);
+  if (latest) {
+    const y = series.priceToCoordinate(latest.close);
+    const paneH = chart.panes()[0]?.getHeight() || svg.clientHeight;
+    const visible = y != null && y > 0 && y < paneH;
+    lastPriceMarker.hidden = !visible;
+    if (visible) {
+      lastPriceMarker.style.top = y - 10 + "px";
+      lastPriceMarker.style.setProperty(
+        "--price-color",
+        latest.close >= latest.open ? "#089981" : "#f23645",
+      );
+      const seconds = Math.max(
+        0,
+        Math.floor(latest.time + step - Date.now() / 1000),
+      );
+      lastPriceMarker.innerHTML = `<span>${symbol.toUpperCase()}</span><b>${latest.close.toLocaleString("en-US", { maximumFractionDigits: 2 })}<small>${live ? String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0") : "DEMO"}</small></b>`;
+    }
+  }
   const paneHeight = chart.panes()[0]?.getHeight() || svg.clientHeight;
-  svg.innerHTML = hidden
-    ? ""
-    : `<defs><clipPath id="price-clip"><rect width="${Math.max(0, svg.clientWidth - 75)}" height="${paneHeight}"/></clipPath></defs><g clip-path="url(#price-clip)">${drawings.map((d) => drawingMarkup(d, coords, svg.clientWidth - 75, paneHeight, data)).join("")}</g>`;
+  const width = Math.max(0, svg.clientWidth - 75);
+  const temp =
+    first && previewPoint
+      ? {
+          type: tool,
+          a: first,
+          b: second || previewPoint,
+          ...(second ? { c: third || previewPoint } : {}),
+          ...(third ? { d: previewPoint } : {}),
+        }
+      : null;
+  const shapes = drawings
+    .map(
+      (d, i) =>
+        `<g data-drawing="${i}" class="drawing-object ${i === selectedDrawing ? "is-selected" : ""}">${drawingMarkup(d, coords, width, paneHeight, data)}</g>`,
+    )
+    .join("");
+  const handles =
+    selectedDrawing >= 0 && !hidden
+      ? ["a", "b", "c", "d"]
+          .filter((k) => drawings[selectedDrawing]?.[k])
+          .map((k) => {
+            const p = coords(drawings[selectedDrawing][k]);
+            return `<circle class="drawing-handle" data-handle="${k}" cx="${p.x}" cy="${p.y}" r="5" fill="#171b26" stroke="#448aff" stroke-width="2"/>`;
+          })
+          .join("")
+      : "";
+  svg.innerHTML = `<defs><clipPath id="price-clip"><rect width="${width}" height="${paneHeight}"/></clipPath></defs><g clip-path="url(#price-clip)">${hidden ? "" : shapes}${temp ? `<g class="drawing-preview">${drawingMarkup(temp, coords, width, paneHeight, data)}</g>` : ""}${handles}</g>`;
+}
+function renderSelectionToolbar() {
+  const d = drawings[selectedDrawing];
+  drawingToolbar.hidden = !d;
+  drawingToolbar.innerHTML = d
+    ? `<span>${d.type}</span><input aria-label="Drawing color" type="color" value="${d.color || "#638cff"}" id="drawing-color"><select aria-label="Drawing thickness" id="drawing-width">${[1, 2, 3, 4].map((n) => `<option ${Math.round(d.width || 1.5) === n ? "selected" : ""}>${n}</option>`).join("")}</select><button data-drawing-action="duplicate" title="Duplicate drawing">${icon("plus")}</button><button data-drawing-action="delete" title="Delete selected drawing">${icon("trash-2")}</button>`
+    : "";
+  createIcons({ icons });
+}
+function finishDrawing(d) {
+  checkpoint();
+  drawings.push(d);
+  redo = [];
+  saveDraw();
+  setTool("cursor");
+  selectedDrawing = drawings.length - 1;
+  renderSelectionToolbar();
+  renderDrawings();
 }
 svg.addEventListener("click", (e) => {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
+  const object = e.target.closest("[data-drawing]");
+  if (tool === "cursor") {
+    if (object) {
+      selectedDrawing = +object.dataset.drawing;
+      renderSelectionToolbar();
+      renderDrawings();
+    }
+    return;
+  }
   if (locked) return toast("Drawings are locked");
   const p = point(e);
-  if (!p) return;
-  if (e.offsetY > chart.panes()[0].getHeight()) return;
+  if (!p || e.offsetY > chart.panes()[0].getHeight()) return;
   if (onePoint.has(tool)) {
-    const text =
-      tool === "text" ? prompt("Annotation text") : tool === "emoji" ? "★" : "";
-    if (tool === "text" && !text) return;
-    drawings.push({ type: tool, a: p, text });
-    redo = [];
-    saveDraw();
+    if (
+      [
+        "text",
+        "note",
+        "price-note",
+        "callout",
+        "comment",
+        "price-label",
+        "signpost",
+      ].includes(tool)
+    ) {
+      const type = tool;
+      modal(
+        "Text & notes",
+        `<form id="annotation-form"><label>Text<input name="text" maxlength="120" required value="${["price-note", "price-label"].includes(type) ? p.price.toFixed(2) : ""}"></label><button class="primary">Add to chart</button></form>`,
+      );
+      document.querySelector("#annotation-form").onsubmit = (e) => {
+        e.preventDefault();
+        const text = new FormData(e.target).get("text");
+        finishDrawing({ type, a: p, text });
+      };
+      return;
+    }
+    finishDrawing({ type: tool, a: p, text: tool === "emoji" ? "★" : "" });
     return;
   }
   if (!first) {
     first = p;
-    toast(
-      threePoint.has(tool)
-        ? "Click the second and third points"
-        : "Click the second point",
-    );
     return;
   }
   if ((threePoint.has(tool) || fourPoint.has(tool)) && !second) {
     second = p;
-    toast("Click the third point");
     return;
   }
   if (fourPoint.has(tool) && !third) {
     third = p;
-    toast("Click the fourth point");
     return;
   }
-  drawings.push({
+  finishDrawing({
     type: tool,
     a: first,
     b: second || p,
     ...(second ? { c: third || p } : {}),
     ...(third ? { d: p } : {}),
   });
-  first = null;
-  second = null;
-  third = null;
-  redo = [];
-  saveDraw();
 });
-chart.timeScale().subscribeVisibleLogicalRangeChange(renderDrawings);
-new ResizeObserver(renderDrawings).observe(host);
+svg.addEventListener("pointerdown", (e) => {
+  if (tool !== "cursor") return;
+  const object = e.target.closest("[data-drawing]"),
+    handle = e.target.dataset.handle;
+  if (!object && !handle) return;
+  if (locked) {
+    toast("Drawings are locked");
+    return;
+  }
+  if (object) selectedDrawing = +object.dataset.drawing;
+  const start = point(e);
+  if (!start) return;
+  dragState = {
+    start,
+    original: structuredClone(drawings[selectedDrawing]),
+    handle,
+    moved: false,
+    snapshot: structuredClone(drawings),
+  };
+  svg.setPointerCapture(e.pointerId);
+  chart.applyOptions({ handleScroll: false, handleScale: false });
+  e.preventDefault();
+  renderSelectionToolbar();
+  renderDrawings();
+});
+svg.addEventListener("pointermove", (e) => {
+  const p = point(e);
+  if (!p) return;
+  if (dragState) {
+    const dt = p.time - dragState.start.time,
+      dp = p.price - dragState.start.price;
+    if (Math.abs(dt) > 0.02 || Math.abs(dp) > 0.01) dragState.moved = true;
+    const d = structuredClone(dragState.original);
+    if (dragState.handle) d[dragState.handle] = p;
+    else
+      for (const k of ["a", "b", "c", "d"])
+        if (d[k]) d[k] = { time: d[k].time + dt, price: d[k].price + dp };
+    drawings[selectedDrawing] = d;
+    renderDrawings();
+    return;
+  }
+  if (first) {
+    previewPoint = p;
+    renderDrawings();
+  }
+});
+function endDrag(e) {
+  if (!dragState) return;
+  suppressClick = dragState.moved;
+  if (dragState.moved) {
+    undoSnapshots.push(dragState.snapshot);
+    redoSnapshots = [];
+  }
+  dragState = null;
+  chart.applyOptions({ handleScroll: true, handleScale: true });
+  if (svg.hasPointerCapture(e.pointerId))
+    svg.releasePointerCapture(e.pointerId);
+  saveDraw();
+}
+svg.addEventListener("pointerup", endDrag);
+svg.addEventListener("pointercancel", endDrag);
+// Blank canvas clicks deselect a drawing and leave normal pan/zoom active.
+host.addEventListener("pointerdown", () => {
+  if (tool === "cursor") {
+    selectedDrawing = -1;
+    renderSelectionToolbar();
+    renderDrawings();
+  }
+});
+function queueOverlayLayout() {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      renderDrawings();
+      studyLabels();
+    }),
+  );
+}
+chart.timeScale().subscribeVisibleLogicalRangeChange(queueOverlayLayout);
+host.addEventListener("pointerup", queueOverlayLayout);
+new ResizeObserver(() => {
+  renderDrawings();
+  studyLabels();
+}).observe(host);
+chart.subscribeClick(() => studyLabels());
 chart.subscribeCrosshairMove((p) => {
   const d = p.seriesData.get(series);
   if (!p.point) {
@@ -645,16 +891,27 @@ const actions = {
     setData();
   },
   undo: () => {
-    if (drawings.length) redo.push(drawings.pop());
+    if (!undoSnapshots.length) return;
+    redoSnapshots.push(structuredClone(drawings));
+    drawings = undoSnapshots.pop();
+    selectedDrawing = -1;
     saveDraw();
+    renderSelectionToolbar();
   },
   redo: () => {
-    if (redo.length) drawings.push(redo.pop());
+    if (!redoSnapshots.length) return;
+    undoSnapshots.push(structuredClone(drawings));
+    drawings = redoSnapshots.pop();
+    selectedDrawing = -1;
     saveDraw();
+    renderSelectionToolbar();
   },
   clear: () => {
+    checkpoint();
     drawings = [];
+    selectedDrawing = -1;
     saveDraw();
+    renderSelectionToolbar();
   },
   hide: () => {
     hidden = !hidden;
@@ -814,6 +1071,9 @@ document.addEventListener("click", (e) => {
     document.querySelector("#instrument").textContent =
       `${symbol.toUpperCase()} / U.S. Dollar · ${b.dataset.label} · Bitstamp`;
     drawings = [];
+    undoSnapshots = [];
+    redoSnapshots = [];
+    setTool("cursor");
     replaying = false;
     close();
     load();
@@ -826,16 +1086,45 @@ document.addEventListener("click", (e) => {
   }
   if (b.dataset.study) {
     addStudy(b.dataset.study);
-    close();
+    if (document.querySelector(".indicator-modal")) {
+      renderIndicatorResults();
+      toast("Indicator added to chart");
+    } else close();
   }
   if (b.dataset.removeStudy) {
-    studies.get(b.dataset.removeStudy).forEach((s) => chart.removeSeries(s));
-    studies.delete(b.dataset.removeStudy);
+    removeStudy(b.dataset.removeStudy);
+  }
+  if (b.dataset.studySettings) studySettings(b.dataset.studySettings);
+  if (b.dataset.toggleStudy) {
+    const n = b.dataset.toggleStudy;
+    if (hiddenStudies.has(n)) hiddenStudies.delete(n);
+    else hiddenStudies.add(n);
+    studies
+      .get(n)
+      .forEach((s) => s.applyOptions({ visible: !hiddenStudies.has(n) }));
     studyLabels();
+  }
+  if (b.dataset.drawingAction) {
+    if (locked) return toast("Drawings are locked");
+    checkpoint();
+    if (b.dataset.drawingAction === "delete") {
+      drawings.splice(selectedDrawing, 1);
+      selectedDrawing = -1;
+    } else {
+      const d = structuredClone(drawings[selectedDrawing]);
+      for (const k of ["a", "b", "c", "d"]) if (d[k]) d[k].time += 3;
+      drawings.push(d);
+      selectedDrawing = drawings.length - 1;
+    }
+    saveDraw();
+    renderSelectionToolbar();
   }
   if (b.dataset.panel) panel(b.dataset.panel);
   if (b.dataset.delete) {
+    checkpoint();
     drawings.splice(+b.dataset.delete, 1);
+    selectedDrawing = -1;
+    renderSelectionToolbar();
     saveDraw();
     actions.objects();
   }
@@ -869,6 +1158,16 @@ document.addEventListener("input", (e) => {
             .toLowerCase()
             .includes(e.target.value.toLowerCase())),
       );
+  if (e.target.id === "drawing-color" || e.target.id === "drawing-width") {
+    if (selectedDrawing >= 0) {
+      if (locked) return toast("Drawings are locked");
+      checkpoint();
+      drawings[selectedDrawing][
+        e.target.id === "drawing-color" ? "color" : "width"
+      ] = e.target.id === "drawing-color" ? e.target.value : +e.target.value;
+      saveDraw();
+    }
+  }
   if (e.target.id === "bg-color")
     chart.applyOptions({
       layout: { background: { type: ColorType.Solid, color: e.target.value } },
@@ -885,6 +1184,17 @@ document.addEventListener("input", (e) => {
 document.addEventListener("submit", (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
+  if (e.target.id === "study-settings-form") {
+    const name = e.target.dataset.name;
+    const opts = Object.fromEntries(f);
+    if (opts.period) opts.period = +opts.period;
+    studyOptions[name] = opts;
+    localStorage.setItem("cw-study-options", JSON.stringify(studyOptions));
+    studies.get(name).forEach((s) => s.applyOptions({ color: opts.color }));
+    setData();
+    studyLabels();
+    close();
+  }
   if (e.target.id === "trade-form") {
     orders.push({
       symbol,
@@ -913,6 +1223,19 @@ document.addEventListener("submit", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
+  if (
+    ["Delete", "Backspace"].includes(e.key) &&
+    selectedDrawing >= 0 &&
+    !["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)
+  ) {
+    e.preventDefault();
+    if (locked) return;
+    checkpoint();
+    drawings.splice(selectedDrawing, 1);
+    selectedDrawing = -1;
+    saveDraw();
+    renderSelectionToolbar();
+  }
   if (e.key === "Escape") {
     close();
     setTool("cursor");
@@ -962,6 +1285,8 @@ function showDrawingMenu(groups) {
       .join(""),
   );
 }
+actions["text-menu"] = () => showDrawingMenu(annotationGroups);
+actions["projection-menu"] = () => showDrawingMenu(projectionGroups);
 actions["lines-menu"] = () => showDrawingMenu(drawingGroups);
 actions["fib-menu"] = () => showDrawingMenu(fibGroups);
 function showStyles() {
@@ -994,7 +1319,7 @@ function showIndicators() {
       )
       .join(
         "",
-      )}</nav><div class="indicator-content"><div class="indicator-tabs">${["Indicators", "Strategies", "Profiles", "Patterns", "Options"].map((n) => `<button data-indicator-tab="${n}" class="${n === indicatorTab ? "active" : ""}">${n}</button>`).join("")}</div><div id="indicator-results"></div></div></div>`,
+      )}</nav><div class="indicator-content"><div class="indicator-tabs">${(indicatorSection === "Fundamentals" ? ["Financials", "Network", "Ownership", "Social"] : ["Indicators", "Strategies", "Profiles", "Patterns", "Options"]).map((n) => `<button data-indicator-tab="${n}" class="${n === indicatorTab ? "active" : ""}">${n}</button>`).join("")}</div><div id="indicator-results"></div></div></div>`,
   );
   document.querySelector(".modal").classList.add("indicator-modal");
   renderIndicatorResults();
@@ -1039,12 +1364,16 @@ function renderIndicatorResults() {
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  if (b?.dataset.section) indicatorSection = b.dataset.section;
+  if (b?.dataset.section) {
+    indicatorSection = b.dataset.section;
+    indicatorTab =
+      indicatorSection === "Fundamentals" ? "Financials" : "Indicators";
+  }
   if (b?.dataset.indicatorTab) indicatorTab = b.dataset.indicatorTab;
   if (b?.dataset.section || b?.dataset.indicatorTab) showIndicators();
   if (
     e.target.closest("header,.chart-shell,.watchlist") &&
-    !e.target.closest('[data-action="style"]')
+    !e.target.closest('[data-action="style"],[data-action="interval"]')
   )
     document.querySelector("#flyout")?.remove();
 });
@@ -1067,3 +1396,56 @@ document.addEventListener("keydown", (e) => {
     setTool(keys[e.key.toLowerCase()]);
   }
 });
+
+actions.interval = () => {
+  const rect = document.querySelector("#interval").getBoundingClientRect();
+  flyout(
+    "Time interval",
+    `<div class="menu-group">MINUTES</div>${[
+      [60, "1m"],
+      [180, "3m"],
+      [300, "5m"],
+      [900, "15m"],
+      [1800, "30m"],
+    ]
+      .map(
+        ([v, l]) =>
+          `<button class="menu-item ${step === v ? "chosen" : ""}" data-step="${v}" data-label="${l}">${v / 60} minutes</button>`,
+      )
+      .join("")}<div class="menu-group">HOURS</div>${[
+      [3600, "1h"],
+      [7200, "2h"],
+      [14400, "4h"],
+      [21600, "6h"],
+      [43200, "12h"],
+    ]
+      .map(
+        ([v, l]) =>
+          `<button class="menu-item ${step === v ? "chosen" : ""}" data-step="${v}" data-label="${l}">${v / 3600} hours</button>`,
+      )
+      .join("")}<div class="menu-group">DAYS</div>${[
+      [86400, "1D"],
+      [259200, "3D"],
+    ]
+      .map(
+        ([v, l]) =>
+          `<button class="menu-item ${step === v ? "chosen" : ""}" data-step="${v}" data-label="${l}">${l}</button>`,
+      )
+      .join(
+        "",
+      )}<p class="muted">Intervals supported by the Bitstamp OHLC feed. Tick and second data are unavailable.</p>`,
+    Math.min(rect.left, innerWidth - 340),
+  );
+};
+
+setInterval(() => {
+  const next = chart
+    .panes()
+    .map((p) => p.getHeight())
+    .join(",");
+  if (next !== paneSizeSignature) {
+    paneSizeSignature = next;
+    studyLabels();
+  }
+  renderDrawings();
+}, 1000);

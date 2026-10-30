@@ -12,7 +12,8 @@ test("chart, indicators, drawing, paper order and timeframe interactions", async
   await expect(page.locator("#chart canvas").first()).toBeVisible();
   await page.getByRole("button", { name: "Indicators", exact: false }).click();
   await page.getByRole("button", { name: "SMA 20", exact: false }).click();
-  await expect(page.locator("#study-labels")).toContainText("SMA 20");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".chart-shell")).toContainText("SMA 20");
   await page
     .getByRole("button", { name: "Horizontal line", exact: true })
     .click();
@@ -26,7 +27,7 @@ test("chart, indicators, drawing, paper order and timeframe interactions", async
   await page.getByRole("button", { name: "Place paper order" }).click();
   await expect(page.locator("#orders")).toContainText("Buy");
   await page.getByRole("button", { name: "15m", exact: true }).click();
-  await page.getByRole("button", { name: "1h", exact: true }).click();
+  await page.locator('[data-step="3600"]').click();
   await expect(page.locator("#interval")).toHaveText("1h");
   await page.screenshot({ path: "test-results/workspace.png", fullPage: true });
   expect(errors).toEqual([]);
@@ -36,7 +37,8 @@ test("RSI panel and mobile layout render", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Indicators", exact: false }).click();
   await page.getByRole("button", { name: "RSI 14", exact: false }).click();
-  await expect(page.locator("#study-labels")).toContainText("RSI 14");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".chart-shell")).toContainText("RSI 14");
   await page.setViewportSize({ width: 780, height: 820 });
   await expect(page.locator("#chart")).toBeVisible();
   expect(

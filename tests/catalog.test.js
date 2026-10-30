@@ -5,7 +5,13 @@ import {
   indicatorCatalog,
   heikinAshi,
 } from "../src/indicators.js";
-import { drawingMarkup, drawingGroups, fibGroups } from "../src/drawing.js";
+import {
+  drawingMarkup,
+  drawingGroups,
+  fibGroups,
+  annotationGroups,
+  projectionGroups,
+} from "../src/drawing.js";
 import { demo } from "../src/data.js";
 test("all built-in studies return finite ordered points", () => {
   const ds = demo(86400);
@@ -55,7 +61,12 @@ test("Heikin Ashi uses the previous synthetic candle", () => {
 });
 test("all menu drawing geometries render finite SVG", () => {
   const convert = (p) => ({ x: p.time * 10, y: 1000 - p.price * 10 });
-  for (const groups of [drawingGroups, fibGroups])
+  for (const groups of [
+    drawingGroups,
+    fibGroups,
+    annotationGroups,
+    projectionGroups,
+  ])
     for (const [, tools] of groups)
       for (const [type] of tools) {
         const svg = drawingMarkup(
@@ -92,4 +103,53 @@ test("annotations escape markup and ray extends beyond endpoint", () => {
   );
   assert.match(ray, /x2="800"/);
   assert.match(ray, /y2="450"/);
+});
+
+test("24-hour volume uses quote value by default and supports base units", () => {
+  const ds = [
+    { time: 0, close: 100, volume: 2 },
+    { time: 900, close: 110, volume: 3 },
+    { time: 86400, close: 120, volume: 4 },
+  ];
+  assert.deepEqual(
+    computeStudy("24-hour volume", ds)[0].map((d) => d.value),
+    [200, 530, 810],
+  );
+  assert.deepEqual(
+    computeStudy("24-hour volume", ds, 900, { volumeUnit: "base" })[0].map(
+      (d) => d.value,
+    ),
+    [2, 5, 7],
+  );
+});
+test("fib levels include bounded background bands and price labels", () => {
+  const s = drawingMarkup(
+    { type: "fib", a: { time: 100, price: 200 }, b: { time: 400, price: 100 } },
+    (p) => ({ x: p.time, y: 500 - p.price }),
+    800,
+    600,
+  );
+  assert.equal((s.match(/<rect /g) || []).length, 6);
+  assert.ok(s.includes("0.618 (161.8)"));
+});
+
+test("CMO is directional and DEMA preserves constant prices", () => {
+  const ds = Array.from({ length: 50 }, (_, i) => ({
+    time: i,
+    open: i + 10,
+    high: i + 12,
+    low: i + 9,
+    close: i + 11,
+    volume: 2,
+  }));
+  assert.equal(
+    computeStudy("Chande momentum oscillator", ds)[0].at(-1).value,
+    100,
+  );
+  const flat = ds.map((d) => ({ ...d, close: 100 }));
+  assert.ok(
+    computeStudy("Double exponential moving average", flat)[0].every(
+      (d) => Math.abs(d.value - 100) < 1e-8,
+    ),
+  );
 });

@@ -57,16 +57,52 @@ export const fibGroups = [
     ],
   ],
 ];
+export const annotationGroups = [
+  [
+    "TEXT AND NOTES",
+    [
+      ["text", "Text"],
+      ["note", "Note"],
+      ["price-note", "Price note"],
+      ["pin", "Pin"],
+      ["callout", "Callout"],
+      ["comment", "Comment"],
+      ["price-label", "Price label"],
+      ["signpost", "Signpost"],
+      ["flag", "Flag mark"],
+    ],
+  ],
+];
+export const projectionGroups = [
+  [
+    "PROJECTION",
+    [
+      ["long-position", "Long position"],
+      ["short-position", "Short position"],
+    ],
+  ],
+  ["MEASURE", [["measure", "Price and bar range"]]],
+];
 export const onePoint = new Set([
   "horizontal",
   "horizontal-ray",
   "vertical",
   "crossline",
   "text",
+  "note",
+  "price-note",
+  "pin",
+  "callout",
+  "comment",
+  "price-label",
+  "signpost",
+  "flag",
   "emoji",
 ]);
 export const fourPoint = new Set(["disjoint"]);
 export const threePoint = new Set([
+  "long-position",
+  "short-position",
   "parallel",
   "pitchfork",
   "schiff",
@@ -97,11 +133,11 @@ export function drawingMarkup(d, convert, width, height, candles = []) {
     return "";
   const color = d.color || "#638cff";
   const line = (x1, y1, x2, y2, stroke = color, dash = "") =>
-    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="1.5" ${dash ? 'stroke-dasharray="5 4"' : ""}/>`;
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${d.width || 1.5}" ${dash ? 'stroke-dasharray="5 4"' : ""}/>`;
   const text = (x, y, t, fill = color) =>
     `<text x="${x}" y="${y}" fill="${fill}" font-size="12">${safe(t)}</text>`;
   const path = (v, fill = "none") =>
-    `<path d="${v}" stroke="${color}" fill="${fill}" stroke-width="1.5"/>`;
+    `<path d="${v}" stroke="${color}" fill="${fill}" stroke-width="${d.width || 1.5}"/>`;
   const ray = (p, q, both = false) => {
     const dx = q.x - p.x,
       dy = q.y - p.y;
@@ -124,16 +160,97 @@ export function drawingMarkup(d, convert, width, height, candles = []) {
   if (d.type === "vertical") return line(a.x, 0, a.x, height);
   if (d.type === "crossline")
     return line(0, a.y, width, a.y) + line(a.x, 0, a.x, height);
-  if (d.type === "text" || d.type === "emoji") return text(a.x, a.y, d.text);
+  if (
+    [
+      "note",
+      "price-note",
+      "pin",
+      "callout",
+      "comment",
+      "price-label",
+      "signpost",
+      "flag",
+    ].includes(d.type)
+  ) {
+    const label = safe(d.text || d.a.price.toFixed(2)),
+      w = Math.max(55, Math.min(260, label.length * 7 + 18));
+    if (d.type === "pin")
+      return (
+        `<circle cx="${a.x}" cy="${a.y - 12}" r="8" fill="${color}"/>` +
+        line(a.x, a.y - 4, a.x, a.y + 12)
+      );
+    if (d.type === "flag")
+      return (
+        line(a.x, a.y, a.x, a.y - 35) +
+        path(
+          `M ${a.x} ${a.y - 35} L ${a.x + 35} ${a.y - 25} L ${a.x} ${a.y - 15} Z`,
+          color,
+        )
+      );
+    return (
+      `<rect x="${a.x}" y="${a.y - 30}" width="${w}" height="25" rx="3" fill="#202b40" stroke="${color}"/>` +
+      text(a.x + 7, a.y - 13, label, "#dce5f7") +
+      (["callout", "comment", "signpost"].includes(d.type)
+        ? line(a.x, a.y - 5, a.x - 12, a.y + 14)
+        : "")
+    );
+  }
+  if (d.type === "long-position" || d.type === "short-position") {
+    const left = Math.min(a.x, b.x, c.x),
+      right = Math.max(a.x, b.x, c.x),
+      target = b.y,
+      stop = c.y;
+    const risk = Math.abs(d.a.price - d.c.price),
+      reward = Math.abs(d.b.price - d.a.price);
+    return (
+      `<rect x="${left}" y="${Math.min(a.y, target)}" width="${right - left}" height="${Math.abs(a.y - target)}" fill="#089981" fill-opacity=".22"/><rect x="${left}" y="${Math.min(a.y, stop)}" width="${right - left}" height="${Math.abs(a.y - stop)}" fill="#f23645" fill-opacity=".22"/>` +
+      line(left, a.y, right, a.y) +
+      line(left, target, right, target, "#089981") +
+      line(left, stop, right, stop, "#f23645") +
+      text(
+        left + 5,
+        a.y - 5,
+        `Risk/Reward ${risk ? (reward / risk).toFixed(2) : "—"}`,
+      )
+    );
+  }
+  if (d.type === "text" || d.type === "emoji") return text(a.x, a.y, d.text || "");
   if (d.type === "ray" || d.type === "extended")
     return ray(a, b, d.type === "extended");
   if (d.type === "rectangle")
     return `<rect x="${Math.min(a.x, b.x)}" y="${Math.min(a.y, b.y)}" width="${Math.abs(b.x - a.x)}" height="${Math.abs(b.y - a.y)}" fill="#2962ff18" stroke="${color}"/>`;
-  if (d.type === "fib" || d.type === "fib-extension")
-    return (d.type === "fib" ? levels : [0, 0.618, 1, 1.618, 2.618, 3.618])
+  if (d.type === "fib") {
+    const left = Math.min(a.x, b.x),
+      right = Math.max(a.x, b.x);
+    const ys = levels.map((v) => b.y + (a.y - b.y) * v);
+    const fills = levels
+      .slice(0, -1)
+      .map(
+        (v, i) =>
+          `<rect x="${left}" y="${Math.min(ys[i], ys[i + 1])}" width="${right - left}" height="${Math.abs(ys[i + 1] - ys[i])}" fill="${colors[i]}" fill-opacity="0.14"/>`,
+      )
+      .join("");
+    return (
+      fills +
+      levels
+        .map(
+          (v, i) =>
+            line(left, ys[i], right, ys[i], colors[i]) +
+            text(
+              left + 5,
+              ys[i] - 5,
+              `${v} (${(d.b.price + (d.a.price - d.b.price) * v).toLocaleString("en-US", { maximumFractionDigits: 2 })})`,
+              colors[i],
+            ),
+        )
+        .join("") +
+      line(a.x, a.y, b.x, b.y, color, true)
+    );
+  }
+  if (d.type === "fib-extension")
+    return [0, 0.618, 1, 1.618, 2.618, 3.618]
       .map((v, i) => {
-        const y =
-          d.type === "fib" ? a.y + (b.y - a.y) * v : c.y + (b.y - a.y) * v;
+        const y = c.y + (b.y - a.y) * v;
         return (
           line(a.x, y, Math.max(b.x, c.x), y, colors[i % 7]) +
           text(a.x + 5, y - 5, v, colors[i % 7])

@@ -26,7 +26,8 @@ test("reference menus, search, categories and default clean chart", async ({
   await page.locator("#study-search").fill("Aroon");
   await expect(page.locator("#indicator-results [data-study]")).toHaveCount(2);
   await page.locator('[data-study="Aroon oscillator"]').click();
-  await expect(page.locator("#study-labels")).toContainText("Aroon oscillator");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".chart-shell")).toContainText("Aroon oscillator");
   await page.getByRole("button", { name: "Indicators", exact: true }).click();
   await page.locator('[data-section="Fundamentals"]').click();
   await expect(page.locator("#indicator-results")).toContainText(
@@ -71,6 +72,9 @@ test("every enabled chart style and built-in indicator executes", async ({
     "Average true range",
     "Bollinger Bands",
     "CCI 20",
+    "Chande momentum oscillator",
+    "Choppiness index",
+    "Double exponential moving average",
     "EMA 20",
     "MACD",
     "OBV",
@@ -84,7 +88,8 @@ test("every enabled chart style and built-in indicator executes", async ({
   ]) {
     await page.getByRole("button", { name: "Indicators", exact: true }).click();
     await page.locator(`[data-study="${name}"]`).click();
-    await expect(page.locator("#study-labels")).toContainText(name);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".chart-shell")).toContainText(name);
     await page.locator(`[data-remove-study="${name}"]`).click();
   }
   expect(errors).toEqual([]);
@@ -112,7 +117,7 @@ test("three-point drawing, keyboard shortcut and screenshot states", async ({
   await page
     .getByRole("button", { name: "Delete all drawings", exact: true })
     .click();
-  await page.mouse.move(100,25);
+  await page.mouse.move(100, 25);
   await page.waitForTimeout(4700);
   await page.screenshot({ path: "test-results/clean-workspace.png" });
   await page

@@ -5,7 +5,12 @@ const rolling = (ds, n, fn) =>
     i < n - 1 ? [] : [value(d, fn(ds.slice(i - n + 1, i + 1), i))],
   );
 export const indicatorCatalog = [
-  ["24-hour volume", "Volume over the trailing 24 hours", "volume24", "pane"],
+  [
+    "24-hour volume",
+    "Rolling 24h quote volume · close × base volume",
+    "volume24",
+    "pane",
+  ],
   ["Accumulation/distribution", "Cumulative money flow volume", "adl", "pane"],
   [
     "Arnaud Legoux moving average",
@@ -18,6 +23,9 @@ export const indicatorCatalog = [
   ["Average daily range", "Daily high minus low, SMA 14", "adr", "pane"],
   ["Average true range", "ATR · Wilder 14", "atr", "pane"],
   ["Bollinger Bands", "20 periods · 2 standard deviations", "bb", "overlay"],
+  ["Chande momentum oscillator", "CMO · 14", "cmo", "pane"],
+  ["Choppiness index", "CHOP · 14", "chop", "pane"],
+  ["Double exponential moving average", "DEMA · 20", "dema", "overlay"],
   ["CCI 20", "Commodity channel index", "cci", "pane"],
   ["EMA 20", "Exponential moving average", "ema", "overlay"],
   ["MACD", "12 / 26 / 9", "macd", "pane"],
@@ -40,17 +48,59 @@ export const unavailableIndicators = [
   "Auto pitchfork",
   "Auto trendlines",
 ];
-export function computeStudy(name, ds, step = 900) {
+export function computeStudy(name, ds, step = 900, options = {}) {
   const def = indicatorCatalog.find((x) => x[0] === name);
   if (!def) throw Error(`Unknown study: ${name}`);
   const id = def[2];
-  if (id === "sma") return [sma(ds)];
-  if (id === "ema") return [ema(ds)];
-  if (id === "rsi") return [rsi(ds)];
+  if (id === "sma") return [sma(ds, options.period || 20)];
+  if (id === "ema") return [ema(ds, options.period || 20)];
+  if (id === "rsi") return [rsi(ds, options.period || 14)];
   if (id === "bb") {
-    const b = bands(ds);
+    const b = bands(ds, options.period || 20);
     return ["upper", "value", "lower"].map((k) => b.map((d) => value(d, d[k])));
   }
+  if (id === "dema") {
+    const first = ema(ds, 20),
+      second = ema(
+        first.map((d) => ({ time: d.time, close: d.value })),
+        20,
+      );
+    return [first.map((d, i) => value(d, 2 * d.value - second[i].value))];
+  }
+  if (id === "cmo")
+    return [
+      rolling(ds, 15, (w) => {
+        let up = 0,
+          down = 0;
+        for (let i = 1; i < w.length; i++) {
+          const delta = w[i].close - w[i - 1].close;
+          up += Math.max(0, delta);
+          down += Math.max(0, -delta);
+        }
+        return up + down ? (100 * (up - down)) / (up + down) : 0;
+      }),
+    ];
+  if (id === "chop")
+    return [
+      rolling(ds, 15, (w) => {
+        const window = w.slice(1),
+          hi = Math.max(...window.map((d) => d.high)),
+          lo = Math.min(...window.map((d) => d.low)),
+          tr = window.reduce(
+            (sum, d, i) =>
+              sum +
+              Math.max(
+                d.high - d.low,
+                Math.abs(d.high - w[i].close),
+                Math.abs(d.low - w[i].close),
+              ),
+            0,
+          );
+        return hi === lo || !tr
+          ? 0
+          : (100 * Math.log10(tr / (hi - lo))) / Math.log10(14);
+      }),
+    ];
   if (id === "volume") return [ds.map((d) => value(d, d.volume))];
   if (id === "volume24") {
     return [
@@ -60,7 +110,11 @@ export function computeStudy(name, ds, step = 900) {
           ds
             .slice(0, i + 1)
             .filter((x) => x.time > d.time - 86400)
-            .reduce((s, x) => s + x.volume, 0),
+            .reduce(
+              (s, x) =>
+                s + x.volume * (options.volumeUnit === "base" ? 1 : x.close),
+              0,
+            ),
         ),
       ),
     ];

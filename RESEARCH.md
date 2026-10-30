@@ -19,3 +19,15 @@ After allowed destinations are applied, validate actual Bitstamp OHLC delivery. 
 ## Screenshot-driven update
 
 A later set of five screenshots supplied the clean chart, Lines/Channels/Pitchfork menu, indicator catalog, chart-type picker, and Fibonacci/Gann menu. These images were the source for the new UI. No new claim about access to TradingView internals or REA evidence is made. The default blue histogram panes were removed; Volume and OBV remain optional studies. New formulas are independent standard technical calculations. Auto tools and market-breadth indicators are explicitly unavailable. Price labels and buy/sell quotes now stay on the latest candle when hovering historical candles; only the OHLC heading follows the cursor.
+
+## Uploaded video observations
+
+The 72.73-second, 904×480 recording was inspected through extracted frames sampled across the entire video, with larger frames for drawing, indicator and menu details. The recording itself is not included in the repository.
+
+- Opening portion: selected blue trendline and edit toolbar; later a downward line and bounded multicolor Fibonacci retracement with ratios and prices.
+- Approximately 20–28 seconds: Text/Notes and projection/measurement menus.
+- Approximately 28–48 seconds: 24-hour volume added as a blue lower histogram; indicator dialog remains open after addition; a second line-study pane appears; panel heights change.
+- Approximately 52–60 seconds: lower panes are removed, returning to the full candle chart; interval menu is opened.
+- Closing portion: Technicals list scrolls through CMO/Choppiness/DEMA and the Fundamentals category displays its tabs.
+
+These are visible interaction observations from the user's recording, not live-site inspection or REA evidence. The recording includes an advance/decline selection, but reproducing a market-breadth series requires constituent advance/decline data that this single-symbol OHLC feed does not provide. That feature remains explicitly unavailable. Fundamental feeds and community scripts are also unconnected. Independent geometry and OHLC-derived calculations approximate the recorded behavior; exact TradingView parity is not claimed.

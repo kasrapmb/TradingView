@@ -959,3 +959,172 @@ header,
     left: 45px !important;
   }
 }
+#drawings .drawing-object {
+  pointer-events: visiblePainted;
+  cursor: move;
+}
+#drawings .drawing-object line {
+  pointer-events: stroke;
+  stroke-linecap: round;
+}
+#drawings .drawing-object.is-selected {
+  filter: drop-shadow(0 0 2px #2962ff88);
+}
+#drawings .drawing-handle {
+  pointer-events: all;
+  cursor: grab;
+}
+#drawings .drawing-preview {
+  pointer-events: none;
+  opacity: 0.8;
+}
+#drawing-toolbar {
+  position: absolute;
+  z-index: 7;
+  top: 90px;
+  left: 32%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #3b4050;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #20242f;
+  box-shadow: 0 5px 20px #0005;
+}
+#drawing-toolbar:empty,
+#drawing-toolbar[hidden] {
+  display: none;
+}
+#drawing-toolbar > span {
+  font-size: 11px;
+  color: #a9b2c5;
+  margin-right: 4px;
+}
+#drawing-toolbar input {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+#drawing-toolbar select {
+  background: #151923;
+  color: #ccd0db;
+  border: 1px solid #404757;
+  border-radius: 3px;
+  height: 25px;
+}
+#drawing-toolbar button {
+  padding: 4px;
+  min-height: 26px;
+}
+#drawing-toolbar svg {
+  width: 17px;
+  height: 17px;
+}
+#pane-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.pane-study {
+  position: absolute;
+  left: 12px;
+  right: 80px;
+}
+.study-label {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a5b9f8;
+  background: #171b26bb;
+  border-radius: 4px;
+  font-size: 11px;
+  height: 26px;
+  padding-left: 5px;
+}
+.study-label button {
+  min-height: 22px;
+  height: 22px;
+  padding: 3px;
+  opacity: 0.45;
+}
+.study-label:hover button {
+  opacity: 1;
+}
+.study-label button svg {
+  height: 14px;
+  width: 14px;
+}
+.study-label > span {
+  margin-right: 6px;
+}
+.study-hidden > span {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+.indicator-modal .search-result:has(em) {
+  min-height: 37px;
+}
+.indicator-modal .search-result span small {
+  display: none;
+}
+.indicator-modal .search-result em {
+  font-size: 11px;
+}
+.indicator-modal .search-result:has(em:not(:empty)):hover {
+  background: #252525;
+}
+#last-price-marker {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  color: white;
+  font-size: 11px;
+  line-height: 16px;
+}
+#last-price-marker[hidden] {
+  display: none;
+}
+#last-price-marker > span {
+  background: var(--price-color);
+  padding: 0 4px;
+  margin-top: 0;
+}
+#last-price-marker > b {
+  background: var(--price-color);
+  min-width: 78px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+#last-price-marker small {
+  display: block;
+  font-weight: 400;
+  font-size: 10px;
+}
+.drawing-tools {
+  justify-content: flex-start;
+}
+.drawing-tools > button.selected {
+  background: #2b2b2b;
+  color: #fff;
+}
+.pane-study .study-label {
+  background: transparent;
+}
+.pane-study {
+  right: 12px;
+}
+.study-label button:last-child {
+  font-size: 17px;
+}
+#drawing-toolbar input,
+#drawing-toolbar select {
+  cursor: pointer;
+}
